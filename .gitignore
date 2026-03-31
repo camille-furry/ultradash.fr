@@ -1,0 +1,5 @@
+server/node_modules/
+public/node_modules/
+dist/
+public/package.json
+public/package-lock.json
