@@ -1,81 +1,51 @@
 const express = require("express");
 const http = require("http");
 const path = require("path");
-
-const Acrobate = require("./personnage/role/accrobate");
-const { resolvePlatformCollision } = require("./physics/collision");
-const Map = require("./map/map");
-
-const gameMap = new Map();
+const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
 
-const io = require("socket.io")(server, {
+const io = new Server(server, {
   cors: {
     origin: "http://localhost:8000",
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+  },
 });
 
+// =====================
+// STATIC
+// =====================
 app.use(express.static(path.join(__dirname, "../public")));
 
-let players = {};
+// =====================
+// MODES
+// =====================
+const modes = {
+  dev: require("./modes/dev"),
+  solo: require("./modes/solo"),
+  multi: require("./modes/multi"),
+};
 
+// =====================
+// SOCKET
+// =====================
 io.on("connection", (socket) => {
-  players[socket.id] = new Acrobate(socket.id);
+  const mode = socket.handshake.query.mode || "dev";
 
-  socket.on("input", (input) => {
-    if (players[socket.id]) {
-      players[socket.id].setInput(input);
-    }
-  });
+  console.log("[CONNECT]", socket.id, "mode:", mode);
 
-  socket.on("disconnect", () => {
-    delete players[socket.id];
-  });
+  const gameMode = modes[mode] || modes.dev;
+
+  socket.join(mode);
+  socket.data.mode = mode;
+
+  gameMode.onJoin(socket, io, mode);
 });
 
-setInterval(() => {
-  let state = {};
-
-  for (let id in players) {
-    let p = players[id];
-
-    // 1. input horizontal
-    p.applyInput();
-
-    // 2. gravity
-    p.applyGravity();
-
-    // 3. movement
-    p.x += p.vx;
-    p.y += p.vy;
-
-    // 4. collision
-    p.onGround = false;
-    resolvePlatformCollision(p, gameMap.getPlatforms());
-
-    // 5. jump buffer
-    if (p.jumpBuffer > 0) {
-      p.jumpBuffer--;
-
-      if (p.onGround) {
-        p.vy = -10;
-        p.jumpBuffer = 0;
-      }
-    }
-
-    state[id] = p.getState();
-  }
-
-  io.emit("state", {
-    players: state,
-    map: gameMap.getPlatforms()
-  });
-
-}, 1000 / 60);
-
+// =====================
+// START
+// =====================
 server.listen(3000, () => {
-  console.log("Serveur lancé sur http://localhost:3000");
+  console.log("Server running → http://localhost:3000");
 });
