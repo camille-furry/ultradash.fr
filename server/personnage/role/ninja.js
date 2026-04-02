@@ -5,44 +5,47 @@ class Ninja extends Hero {
     super(id);
 
     this.speed = 6;
-    this.wallJumpForce = 10; // ✅ valeur réaliste
     this.jumpPower = 10;
+    this.wallJumpForce = 14;
 
-    this.maxJumps = 1;
-    this.jumpsLeft = 1;
+    this.wallJumpLock = 0;
+    this.wallStickTime = 0;
+
+    this.lastWallSide = null;
+    this.wasOnWall = false;
   }
 
   update() {
-    super.update();
-
-    // =====================
-    // WALL SLIDE
-    // =====================
-    if (this.onWall && !this.onGround) {
-      this.vy = Math.min(this.vy, 1);
+    if (this.onWall) {
+      this.lastWallSide = this.wallSide;
+      this.wasOnWall = true;
     }
 
-    // =====================
-    // WALL JUMP
-    // =====================
-    if (
-      this.onWall &&
-      !this.onGround &&
-      this.input.jump &&
-      this.jumpCooldown === 0
-    ) {
-      this.vy = -this.jumpPower;
+    // 🔥 CALCULER AVANT super.update() pour éviter que prevInput soit modifié
+    const jumpPressed = this.input.jump && !this.prevInput.jump;
+    const isWallJump = jumpPressed && this.wasOnWall && this.wallJumpLock === 0;
 
-      // ✅ push correct (NE PAS inverser)
-      if (this.wallSide === "left") this.vx = this.wallJumpForce;
-      if (this.wallSide === "right") this.vx = -this.wallJumpForce;
+    if (isWallJump) {
+      if (this.lastWallSide === "left") {
+        this.overrideVX = this.wallJumpForce;
+      } else if (this.lastWallSide === "right") {
+        this.overrideVX = -this.wallJumpForce;
+      }
 
-      // ✅ bloque input → vrai décollage
+      this.overrideVY = -this.jumpPower;
+      this.prevInput.jump = true;
       this.wallJumpLock = 10;
-      this.wallJumpIgnore = 10;
-
+      this.wallStickTime = 0;
+      this.lastWallSide = null;
+      this.wasOnWall = false;
+      if (this.jumpsLeft > 0) this.jumpsLeft--;
       this.jumpCooldown = 5;
     }
+
+    super.update();
+
+    if (this.wallJumpLock > 0) this.wallJumpLock--;
+    if (this.wallStickTime > 0) this.wallStickTime--;
   }
 }
 

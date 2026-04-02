@@ -1,16 +1,25 @@
-module.exports = (io) => {
-  const players = {};
-  const DevMap = require("../map/dev/devMap");
-  const { resolvePlatformCollision } = require("../physics/collision");
+const Accrobate = require("../personnage/role/accrobate");
+const Ninja = require("../personnage/role/ninja");
+const Valkiry = require("../personnage/role/walkiry");
+const Dasher = require("../personnage/role/dasher");
 
-  const Ninja = require("../personnage/role/ninja");
-  const Accrobate = require("../personnage/role/accrobate");
-  const Dasher = require("../personnage/role/dasher");
-  const Valkiry = require("../personnage/role/walkiry");
+const DevMap = require("../map/dev/devMap");
+const { updatePhysics } = require("../physics/physicsEngine");
 
-  const map = new DevMap();
+const sessions = {};
 
-  function createPlayer(type, id) {
+class MultiSession {
+  constructor(room, io) {
+    this.room = room;
+    this.io = io;
+
+    this.players = {};
+    this.map = new DevMap();
+
+    this.startLoop();
+  }
+
+  createPlayer(type, id) {
     switch (type) {
       case "accrobate":
         return new Accrobate(id);
@@ -23,48 +32,63 @@ module.exports = (io) => {
     }
   }
 
-  io.on("connection", (socket) => {
-    players[socket.id] = createPlayer("ninja", socket.id);
+  addPlayer(socket) {
+    const role = socket.data.role || "ninja";
+    this.players[socket.id] = this.createPlayer(role, socket.id);
 
     socket.on("input", (input) => {
-      if (players[socket.id]) {
-        players[socket.id].setInput(input);
-      }
+      const player = this.players[socket.id];
+      if (player) player.setInput(input);
     });
 
     socket.on("changeClass", (type) => {
-      const old = players[socket.id];
+      const old = this.players[socket.id];
       if (!old) return;
 
-      const p = createPlayer(type, socket.id);
+      const player = this.createPlayer(type, socket.id);
+      player.x = old.x;
+      player.y = old.y;
 
-      p.x = old.x;
-      p.y = old.y;
-
-      players[socket.id] = p;
+      this.players[socket.id] = player;
     });
 
     socket.on("disconnect", () => {
-      delete players[socket.id];
+      delete this.players[socket.id];
+
+      if (Object.keys(this.players).length === 0) {
+        delete sessions[this.room];
+      }
     });
-  });
+  }
 
-  setInterval(() => {
-    const state = {};
-    const platforms = map.getPlatforms();
+  startLoop() {
+    setInterval(() => {
+      const state = {};
+      const platforms = this.map.getPlatforms();
 
-    for (let id in players) {
-      const p = players[id];
+      for (let id in this.players) {
+        const player = this.players[id];
 
-      p.update();
-      resolvePlatformCollision(p, platforms);
+        player.update();
+        updatePhysics(player, platforms);
 
-      state[id] = p.getState();
+        state[id] = player.getState();
+      }
+
+      this.io.to(this.room).emit("state", {
+        players: state,
+        map: platforms,
+      });
+    }, 1000 / 60);
+  }
+}
+
+module.exports = {
+  onJoin(socket, io, room) {
+    if (!sessions[room]) {
+      sessions[room] = new MultiSession(room, io);
     }
 
-    io.emit("state", {
-      players: state,
-      map: platforms,
-    });
-  }, 1000 / 60);
+    sessions[room].addPlayer(socket);
+  },
 };

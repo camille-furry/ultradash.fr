@@ -43,18 +43,12 @@ class Dasher extends Hero {
       this.dashCooldown = 20; // anti spam
     }
 
-    // =====================
-    // LOCK CONTROL DURING DASH
-    // =====================
-    const isDashing = this.dashTime > 0;
-
-    if (!isDashing) {
-      super.update(); // movement normal ONLY if not dashing
-    } else {
-      // pendant dash : on garde vitesse constante
-      this.x += this.vx;
-      this.y += this.vy;
+    if (this.dashTime > 0) {
+      this.overrideVX = this.lastDir * this.dashPower;
+      this.overrideVY = 0;
     }
+
+    super.update();
   }
 }
 

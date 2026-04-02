@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Game</title>
+    <link rel="stylesheet" href="css/game.css" />
+  </head>
+
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="ui">
+      <select id="classSelect">
+        <option value="ninja">Ninja</option>
+        <option value="accrobate">Accrobate</option>
+        <option value="dasher">Dasher</option>
+        <option value="valkiry">Valkiry</option>
+      </select>
+
+      <button id="applyClass">Changer</button>
+    </div>
+
+    <!-- Socket.IO -->
+    <script src="http://localhost:3000/socket.io/socket.io.js"></script>
+
+    <!-- Client -->
+    <script src="src/clientDev.js"></script>
+  </body>
+</html>
