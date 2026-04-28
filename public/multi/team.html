@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UltraDash Team Select</title>
+    <link rel="stylesheet" href="css/menu.css" />
+  </head>
+  <body>
+    <main id="menu" class="lobbyMenu teamSelectLayout">
+      <h1>Choix Equipe</h1>
+      <p class="subtitle" id="teamRoomLabel">Room: -</p>
+
+      <label for="nicknameInput" class="label">Pseudo</label>
+      <input
+        id="nicknameInput"
+        type="text"
+        maxlength="20"
+        placeholder="Ton pseudo"
+        autocomplete="nickname"
+      />
+
+      <section class="teamGrid">
+        <article class="teamPanel teamPanelRed">
+          <header>
+            <strong>Team 1 (Rouge)</strong>
+            <small id="teamRedCount">0/3</small>
+          </header>
+          <ul id="teamRedList" class="teamPlayerList"></ul>
+          <button id="joinRedBtn" type="button">Rejoindre Team 1</button>
+        </article>
+
+        <article class="teamPanel teamPanelBlue">
+          <header>
+            <strong>Team 2 (Bleu)</strong>
+            <small id="teamBlueCount">0/3</small>
+          </header>
+          <ul id="teamBlueList" class="teamPlayerList"></ul>
+          <button id="joinBlueBtn" type="button">Rejoindre Team 2</button>
+        </article>
+      </section>
+
+      <p id="statusLine" class="statusLine" aria-live="polite"></p>
+      <button id="backLobbyBtn" type="button">Retour aux rooms</button>
+    </main>
+
+    <script src="src/lobby-common.js"></script>
+    <script src="src/team.js"></script>
+  </body>
+</html>

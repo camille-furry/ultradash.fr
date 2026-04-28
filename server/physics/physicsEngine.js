@@ -7,8 +7,7 @@ function updatePhysics(entity, platforms) {
 
   resolvePlatformCollision(entity, platforms);
 
-  // RESET JUMP (ok)
-  if (entity.onGround && !entity.wasOnGround) {
+  if (entity.justLanded) {
     entity.jumpsLeft = entity.maxJumps;
   }
 

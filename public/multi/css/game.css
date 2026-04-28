@@ -4,16 +4,40 @@ body {
   padding: 0;
   overflow: hidden;
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  background: #09131d;
 }
 
 canvas {
   display: block;
 }
 
+#mapBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-attachment: fixed;
+  filter: saturate(0.95) contrast(1.02);
+}
+
+#mapBackdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(9, 19, 29, 0.18),
+    rgba(9, 19, 29, 0.28)
+  );
+}
+
 #game {
   position: absolute;
   top: 0;
   left: 0;
+  z-index: 1;
 }
 
 #topScoreHud {
@@ -71,19 +95,139 @@ canvas {
 
 #ui {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 9999;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 10px;
-  border-radius: 8px;
-  color: white;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 13000;
+  display: grid;
+  gap: 12px;
+  width: min(92vw, 440px);
+  border: 1px solid rgba(131, 199, 255, 0.35);
+  border-radius: 18px;
+  background: rgba(10, 24, 36, 0.92);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  padding: 22px;
+  color: #eef8ff;
+  animation: card-in 220ms ease-out;
+}
+
+#ui.hidden {
+  display: none;
+}
+
+#heroSwitchTitle {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0.4px;
+}
+
+#heroSwitchHint {
+  margin: 0;
+  color: #b9d5e8;
+  font-size: 14px;
+}
+
+.heroSwitchLabel {
+  margin-top: 2px;
+  color: #b9d5e8;
+  font-size: 13px;
+}
+
+.heroCategories {
+  display: grid;
+  gap: 14px;
+}
+
+.heroCategory {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(2, 9, 16, 0.58);
+  outline: 1px solid rgba(131, 199, 255, 0.2);
+}
+
+.heroCategory h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #b9d5e8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.heroCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.heroCard {
+  border: 0;
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  color: #eef8ff;
+  background: rgba(8, 22, 34, 0.9);
+  outline: 1px solid rgba(131, 199, 255, 0.25);
+}
+
+.heroCard.active {
+  color: #03261c;
+  background: linear-gradient(90deg, #41e3a1, #78ffcc);
+  outline-color: rgba(65, 227, 161, 0.45);
+}
+
+#ui select,
+#ui button {
+  width: 100%;
+}
+
+#ui select {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 16px;
+  background: rgba(3, 13, 21, 0.8);
+  color: #eef8ff;
+  outline: 1px solid rgba(131, 199, 255, 0.22);
+  appearance: none;
+}
+
+#ui select:focus {
+  outline: 2px solid #2bc1ff;
+}
+
+#ui select option {
+  color: #0c2635;
+  background: #e7f3fb;
+}
+
+.heroSwitchActions {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+#ui button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #03261c;
+  background: linear-gradient(90deg, #41e3a1, #78ffcc);
+}
+
+#ui button:hover {
+  filter: brightness(1.05);
 }
 
 #skillsHud {
   position: absolute;
   left: 20px;
-  bottom: 20px;
+  bottom: 98px;
   z-index: 10000;
   display: grid;
   gap: 10px;
@@ -147,6 +291,53 @@ canvas {
   background: linear-gradient(90deg, #ff7a7a, #ffc46f);
 }
 
+#selfHpHud {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 10010;
+  width: min(92vw, 760px);
+  padding: 12px 16px;
+  background: rgba(8, 20, 30, 0.88);
+  border: 1px solid rgba(255, 160, 160, 0.35);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+}
+
+#selfHpHud .skillHudTop {
+  margin-bottom: 10px;
+}
+
+#selfHpHud .skillHudTop strong {
+  font-size: 15px;
+}
+
+#selfHpHud .skillHudTop small {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+#selfHpHud .skillHudBar {
+  height: 16px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+@media (max-width: 900px) {
+  #skillsHud {
+    bottom: 88px;
+  }
+
+  #selfHpHud {
+    width: min(94vw, 620px);
+    bottom: 14px;
+    padding: 10px 12px;
+  }
+
+  #selfHpHud .skillHudBar {
+    height: 14px;
+  }
+}
+
 #ammoFill {
   background: linear-gradient(90deg, #ffe06f, #ff9d4e);
 }
@@ -168,6 +359,50 @@ canvas {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
 }
 
+#mapIntroOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12600;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+#mapIntroOverlay.hidden {
+  display: none;
+}
+
+#mapIntroCard {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+  min-width: min(90vw, 420px);
+  padding: 20px 24px;
+  border-radius: 18px;
+  background: rgba(6, 17, 26, 0.84);
+  border: 1px solid rgba(160, 214, 255, 0.34);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(5px);
+}
+
+#mapIntroCard small {
+  color: #bfe4ff;
+  font-size: 13px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+#mapIntroCard strong {
+  color: #f3fbff;
+  font-size: clamp(30px, 6vw, 56px);
+  letter-spacing: 0.8px;
+  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+#mapIntroOverlay.is-visible #mapIntroCard {
+  animation: map-intro-pop 3s ease both;
+}
 #pauseOverlay {
   position: absolute;
   inset: 0;
@@ -178,6 +413,29 @@ canvas {
 }
 
 #pauseOverlay.hidden {
+  @keyframes map-intro-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(16px) scale(0.94);
+      filter: blur(3px);
+    }
+
+    15% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+
+    78% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    100% {
+      opacity: 0;
+      transform: translateY(-12px) scale(1.03);
+    }
+  }
   display: none;
 }
 
@@ -273,6 +531,12 @@ canvas {
 #respawnPanel p {
   margin: 0;
   color: #ffd2d2;
+}
+
+#respawnSwitchHint {
+  margin-top: 4px;
+  color: #bfe4ff;
+  font-size: 12px;
 }
 
 #roomPanel,

@@ -17,10 +17,10 @@ function normalizeRoomName(value) {
 }
 
 const selectedRoom = normalizeRoomName(
-  urlParams.get("room") || localStorage.getItem("pendingDevRoom") || "",
+  urlParams.get("room") || localStorage.getItem("pendingMultiRoom") || "",
 );
 const selectedTeam =
-  (urlParams.get("team") || localStorage.getItem("pendingDevTeam") || "red")
+  (urlParams.get("team") || localStorage.getItem("pendingMultiTeam") || "red")
     .trim()
     .toLowerCase() === "blue"
     ? "blue"
@@ -28,7 +28,7 @@ const selectedTeam =
 const selectedRoomMode =
   normalizeRoomName(
     urlParams.get("roomMode") ||
-      localStorage.getItem("pendingDevMode") ||
+      localStorage.getItem("pendingMultiMode") ||
       "team3v3",
   ) || "team3v3";
 const selectedNickname =
@@ -37,17 +37,24 @@ const selectedNickname =
     .slice(0, 20) || "Player";
 
 if (!selectedRoom) {
-  window.location.href = `${FRONTEND_ORIGIN}/?error=missing-room`;
+  window.location.href = `${FRONTEND_ORIGIN}/multi/?error=missing-room`;
 }
 
 localStorage.setItem("playerNickname", selectedNickname);
-localStorage.setItem("pendingDevRoom", selectedRoom);
+localStorage.setItem("pendingMultiRoom", selectedRoom);
 localStorage.setItem("selectedTeam", selectedTeam);
 localStorage.setItem("selectedRoomMode", selectedRoomMode);
-localStorage.setItem("pendingDevTeam", selectedTeam);
-localStorage.setItem("pendingDevMode", selectedRoomMode);
-const SETTINGS_KEY = "devSettings";
+localStorage.setItem("pendingMultiTeam", selectedTeam);
+localStorage.setItem("pendingMultiMode", selectedRoomMode);
+const SETTINGS_KEY = "multiSettings";
 const LOCAL_HEROES = ["kenji", "croc", "via"];
+const SUBROLE_ORDER = ["ninja", "accrobate", "dasher", "walkiry"];
+const HERO_SUBROLES = {
+  via: "ninja",
+  kenji: "accrobate",
+  croc: "dasher",
+  valkiry: "walkiry",
+};
 const ALLOWED_FPS = [60, 90, 120];
 const NETWORK_INPUT_HZ = 60;
 const RENDER_PREDICTION_MS = 12;
@@ -78,30 +85,56 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, value));
 }
 
-function normalizeMapPayload(mapPayload) {
-  if (Array.isArray(mapPayload)) return mapPayload;
-  if (Array.isArray(mapPayload?.platforms)) return mapPayload.platforms;
-  return [];
-}
-
 function toLabel(name) {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-function loadHeroesIntoSelect(select, preferredHero) {
-  select.innerHTML = "";
+async function loadAvailableHeroes() {
+  try {
+    const response = await fetch(`${SERVER_ORIGIN}/api/heroes`);
+    if (!response.ok) return LOCAL_HEROES;
+    const payload = await response.json();
+    if (!Array.isArray(payload?.heroes) || payload.heroes.length === 0) {
+      return LOCAL_HEROES;
+    }
+    return payload.heroes;
+  } catch (error) {
+    return LOCAL_HEROES;
+  }
+}
 
-  const list = LOCAL_HEROES.length > 0 ? LOCAL_HEROES : ["kenji"];
-  for (const hero of list) {
-    const option = document.createElement("option");
-    option.value = hero;
-    option.textContent = toLabel(hero);
-    select.appendChild(option);
+function buildHeroCategoryMap(heroes) {
+  const grouped = {
+    ninja: [],
+    accrobate: [],
+    dasher: [],
+    walkiry: [],
+  };
+  const remaining = [];
+
+  for (let i = 0; i < heroes.length; i++) {
+    const hero = heroes[i];
+    const subrole = HERO_SUBROLES[hero] || null;
+    if (subrole && grouped[subrole]) {
+      grouped[subrole].push(hero);
+    } else {
+      remaining.push(hero);
+    }
   }
 
-  if (preferredHero && list.includes(preferredHero)) {
-    select.value = preferredHero;
+  const result = [];
+  for (let i = 0; i < SUBROLE_ORDER.length; i++) {
+    const category = SUBROLE_ORDER[i];
+    if (grouped[category].length > 0) {
+      result.push({ category, heroes: grouped[category] });
+    }
   }
+
+  if (remaining.length > 0) {
+    result.push({ category: "autres", heroes: remaining });
+  }
+
+  return result;
 }
 
 // =====================
@@ -171,12 +204,44 @@ function drawImpactParticles() {
   }
 }
 
+function showFatalOverlay(message) {
+  const panel = document.createElement("div");
+  panel.style.position = "fixed";
+  panel.style.inset = "0";
+  panel.style.display = "grid";
+  panel.style.placeItems = "center";
+  panel.style.background = "rgba(3, 9, 16, 0.78)";
+  panel.style.zIndex = "99999";
+  panel.style.color = "#eaf7ff";
+  panel.style.fontFamily = '"Trebuchet MS", "Segoe UI", sans-serif';
+  panel.style.padding = "20px";
+
+  const card = document.createElement("div");
+  card.style.width = "min(92vw, 520px)";
+  card.style.borderRadius = "14px";
+  card.style.padding = "16px";
+  card.style.background = "#0e2230";
+  card.style.border = "1px solid rgba(130, 200, 255, 0.3)";
+  card.style.boxShadow = "0 18px 36px rgba(0,0,0,0.35)";
+  card.textContent = message;
+
+  panel.appendChild(card);
+  document.body.appendChild(panel);
+}
+
 // =====================
 // SOCKET
 // =====================
-const socket = io("http://localhost:3000", {
+if (typeof window.io !== "function") {
+  showFatalOverlay(
+    "Socket.IO introuvable. Verifie que le serveur backend (port 3000) est bien demarre, puis recharge la page.",
+  );
+  throw new Error("Socket.IO client is not loaded");
+}
+
+const socket = window.io("http://localhost:3000", {
   query: {
-    mode: "dev",
+    mode: "multi",
     role: selectedRole,
     room: selectedRoom,
     nickname: selectedNickname,
@@ -186,12 +251,14 @@ const socket = io("http://localhost:3000", {
 });
 
 let hasJoinedRoom = false;
+let joinFailureHandled = false;
 let leaderboardHeld = false;
 let currentRoomState = {
   started: false,
   leaderId: null,
   winnerTeam: null,
   teamCounts: { red: 0, blue: 0 },
+  teamZones: [],
   targetKills: 50,
   modeLabel: "3v3",
 };
@@ -238,7 +305,7 @@ function showJoinError(message) {
     backButton.style.background = "#41e3a1";
     backButton.style.color = "#05261c";
     backButton.addEventListener("click", () => {
-      window.location.href = `${FRONTEND_ORIGIN}/`;
+      window.location.href = `${FRONTEND_ORIGIN}/multi/`;
     });
 
     card.appendChild(title);
@@ -259,8 +326,13 @@ socket.on("joinedRoom", (payload) => {
       ...currentRoomState,
       ...payload.roomState,
       teamCounts: payload.roomState.teamCounts || currentRoomState.teamCounts,
+      teamZones: Array.isArray(payload.roomState.teamZones)
+        ? payload.roomState.teamZones
+        : currentRoomState.teamZones,
     };
     updateRoomOverlay(currentRoomState);
+    syncMapBackground(currentRoomState);
+    showMapIntro(currentRoomState.mapName);
     if (uiRefs.leaderboardOverlay) {
       uiRefs.leaderboardOverlay.classList.add("hidden");
     }
@@ -268,19 +340,28 @@ socket.on("joinedRoom", (payload) => {
 });
 
 socket.on("roomError", (payload) => {
+  joinFailureHandled = true;
   const code = payload?.code || "UNKNOWN";
   const message =
     code === "ROOM_FULL"
       ? "La room est complete."
       : code === "INVALID_ROOM"
         ? "Le nom de room est invalide."
-        : `Erreur room: ${code}`;
+        : code === "ROOM_NOT_FOUND"
+          ? "Cette room n'existe plus (serveur redemarre). Reviens au lobby pour la recreer."
+          : code === "ROOM_MODE_MISMATCH"
+            ? "Le mode de la room ne correspond pas. Rejoins la room depuis le lobby."
+            : `Erreur room: ${code}`;
+
+  if (code === "ROOM_NOT_FOUND") {
+    localStorage.removeItem("pendingMultiRoom");
+  }
 
   showJoinError(message);
 });
 
 socket.on("disconnect", (reason) => {
-  if (hasJoinedRoom) return;
+  if (hasJoinedRoom || joinFailureHandled) return;
 
   showJoinError(`Connexion coupee avant validation de la room (${reason}).`);
 });
@@ -293,11 +374,16 @@ const ctx = canvas.getContext("2d");
 
 let camera = { x: 0, y: 0 };
 let cameraTargetX = 0;
+let cameraTargetY = 0;
 let cameraInitialized = false;
 
 let serverPlayers = {};
 let smoothPlayers = {};
 let serverMap = [];
+
+function normalizeMapPayload(mapPayload) {
+  return Array.isArray(mapPayload) ? mapPayload : [];
+}
 
 let keys = {
   left: false,
@@ -318,6 +404,13 @@ let inputIntervalId = null;
 let renderIntervalMs = 1000 / gameSettings.fps;
 let lastRenderTime = 0;
 let lastFrameTimestamp = 0;
+let heroSwitchVisible = false;
+let availableHeroes = [...LOCAL_HEROES];
+let selectedHeroName = selectedRole;
+let mapIntroTimeoutId = null;
+let isReturningToHeroSelect = false;
+let mapBackgroundImage = null;
+let mapBackgroundUrl = null;
 
 // ======================
 // DRAGONBONES SETUP
@@ -330,10 +423,77 @@ const kenjiDragonBonesData = {
   factory: null,
 };
 const kenjiArmatures = {};
+const KENJI_NATIVE_FACING = 1;
 
-class KenjiCanvasTextureData extends dragonBones.TextureData {}
+function resolveCompatibleDragonBonesRuntime() {
+  if (typeof window === "undefined") {
+    return null;
+  }
 
-class KenjiCanvasTextureAtlasData extends dragonBones.TextureAtlasData {
+  const db =
+    window.dragonBones ||
+    (typeof dragonBones !== "undefined" ? dragonBones : null);
+  if (!db) return null;
+  const requiredConstructors = [
+    "TextureData",
+    "TextureAtlasData",
+    "Slot",
+    "BaseFactory",
+    "Armature",
+  ];
+
+  for (let i = 0; i < requiredConstructors.length; i++) {
+    const key = requiredConstructors[i];
+    if (typeof db[key] !== "function") {
+      return null;
+    }
+  }
+
+  if (!db.BaseObject || typeof db.BaseObject.borrowObject !== "function") {
+    return null;
+  }
+
+  return db;
+}
+
+const compatibleDragonBonesRuntime = resolveCompatibleDragonBonesRuntime();
+
+const DragonBonesLib = compatibleDragonBonesRuntime || {
+  TextureData: class {},
+  TextureAtlasData: class {
+    _onClear() {}
+  },
+  Slot: class {},
+  BaseFactory: class {},
+  Armature: class {
+    init() {}
+  },
+  BaseObject: {
+    borrowObject() {
+      return {};
+    },
+  },
+};
+
+if (!compatibleDragonBonesRuntime) {
+  console.warn(
+    "DragonBones runtime unavailable or incompatible. Kenji uses fallback rectangle rendering.",
+  );
+}
+
+class KenjiCanvasTextureData extends DragonBonesLib.TextureData {
+  static toString() {
+    return "[class KenjiCanvasTextureData]";
+  }
+
+  _onClear() {
+    if (super._onClear) {
+      super._onClear();
+    }
+  }
+}
+
+class KenjiCanvasTextureAtlasData extends DragonBonesLib.TextureAtlasData {
   constructor() {
     super();
     this.renderTexture = null;
@@ -344,7 +504,7 @@ class KenjiCanvasTextureAtlasData extends dragonBones.TextureAtlasData {
   }
 
   createTexture() {
-    return dragonBones.BaseObject.borrowObject(KenjiCanvasTextureData);
+    return DragonBonesLib.BaseObject.borrowObject(KenjiCanvasTextureData);
   }
 
   _onClear() {
@@ -353,7 +513,7 @@ class KenjiCanvasTextureAtlasData extends dragonBones.TextureAtlasData {
   }
 }
 
-class KenjiCanvasSlot extends dragonBones.Slot {
+class KenjiCanvasSlot extends DragonBonesLib.Slot {
   static toString() {
     return "[class KenjiCanvasSlot]";
   }
@@ -415,10 +575,8 @@ class KenjiCanvasArmatureDisplay {
 
   dispose(disposeProxy = true) {
     void disposeProxy;
-    if (this._armature) {
-      this._armature.dispose();
-      this._armature = null;
-    }
+    // DragonBones runtime owns armature disposal. The proxy must only detach.
+    this._armature = null;
   }
 
   destroy() {
@@ -448,7 +606,7 @@ class KenjiCanvasArmatureDisplay {
   }
 }
 
-class KenjiCanvasFactory extends dragonBones.BaseFactory {
+class KenjiCanvasFactory extends DragonBonesLib.BaseFactory {
   _isSupportMesh() {
     return false;
   }
@@ -459,7 +617,7 @@ class KenjiCanvasFactory extends dragonBones.BaseFactory {
       return textureAtlasData;
     }
 
-    const atlasData = dragonBones.BaseObject.borrowObject(
+    const atlasData = DragonBonesLib.BaseObject.borrowObject(
       KenjiCanvasTextureAtlasData,
     );
     atlasData.renderTexture = textureAtlas;
@@ -467,7 +625,9 @@ class KenjiCanvasFactory extends dragonBones.BaseFactory {
   }
 
   _buildArmature(dataPackage) {
-    const armature = dragonBones.BaseObject.borrowObject(dragonBones.Armature);
+    const armature = DragonBonesLib.BaseObject.borrowObject(
+      DragonBonesLib.Armature,
+    );
     armature.init(
       dataPackage.armature,
       new KenjiCanvasArmatureDisplay(),
@@ -479,7 +639,7 @@ class KenjiCanvasFactory extends dragonBones.BaseFactory {
 
   _buildSlot(dataPackage, slotData, armature) {
     void dataPackage;
-    const slot = dragonBones.BaseObject.borrowObject(KenjiCanvasSlot);
+    const slot = DragonBonesLib.BaseObject.borrowObject(KenjiCanvasSlot);
     slot.init(slotData, armature, { kind: "raw" }, { kind: "mesh" });
     return slot;
   }
@@ -550,6 +710,7 @@ function createKenjiArmature(playerId) {
       kenjiArmatures[playerId] = {
         armature,
         currentAnimation: "idle",
+        facing: 1,
       };
     }
     return armature;
@@ -573,15 +734,66 @@ function updateKenjiAnimation(playerId, frameDeltaMs) {
   const state = kenjiArmatures[playerId];
   if (!state || !state.armature) return;
 
-  state.armature.advanceTime(frameDeltaMs / 1000);
+  if (!state.armature._dragonBones) {
+    delete kenjiArmatures[playerId];
+    return;
+  }
+
+  try {
+    state.armature.advanceTime(frameDeltaMs / 1000);
+  } catch (error) {
+    console.warn(
+      "Kenji armature update failed, falling back for this player:",
+      error,
+    );
+    delete kenjiArmatures[playerId];
+  }
 }
 
-function drawKenjiSlot(slot, originX, originY, renderScale) {
-  if (!slot || !slot.getDisplayFrameAt) return false;
+function getKenjiRenderScale(armature) {
+  const armatureData =
+    armature?.armatureData || armature?._armatureData || null;
+  const aabb = armatureData?.aabb || null;
+  const width = Number(aabb?.width) || 0;
+  const height = Number(aabb?.height) || 0;
 
-  const displayFrame = slot.getDisplayFrameAt(slot.displayIndex);
-  const textureData = displayFrame ? displayFrame.textureData : null;
-  if (!displayFrame || !textureData || !textureData.parent) return false;
+  if (width > 0 && height > 0) {
+    const targetHeightPx = 44;
+    const rawScale = targetHeightPx / height;
+    return Math.max(0.008, Math.min(0.08, rawScale));
+  }
+
+  return 0.02;
+}
+
+function drawKenjiSlot(slot, originX, originY, renderScale, facingSign = 1) {
+  if (!slot) return false;
+
+  let textureData = null;
+  let pivotX = 0;
+  let pivotY = 0;
+  let useRuntime57Math = false;
+
+  // Legacy path.
+  if (typeof slot.getDisplayFrameAt === "function") {
+    const displayFrame = slot.getDisplayFrameAt(slot.displayIndex);
+    const displayData = displayFrame ? displayFrame.displayData : null;
+    textureData = displayFrame ? displayFrame.textureData : null;
+    if (displayData && displayData.pivot) {
+      pivotX = Number(displayData.pivot.x) || 0;
+      pivotY = Number(displayData.pivot.y) || 0;
+    }
+  }
+
+  // DragonBones 5.7 path.
+  if (!textureData && slot._textureData) {
+    textureData = slot._textureData;
+    pivotX = Number(slot._pivotX) || 0;
+    pivotY = Number(slot._pivotY) || 0;
+    useRuntime57Math = true;
+  }
+
+  if (!textureData || !textureData.parent || !textureData.region) return false;
 
   const textureAtlasData = textureData.parent;
   const sourceImage =
@@ -591,30 +803,52 @@ function drawKenjiSlot(slot, originX, originY, renderScale) {
     null;
   if (!sourceImage || !textureData.region) return false;
 
-  const displayData = displayFrame.displayData;
-  const pivot = displayData && displayData.pivot ? displayData.pivot : null;
   const frame = textureData.frame;
   const source = textureData.region;
   const matrix = slot.globalTransformMatrix;
+  if (
+    !matrix ||
+    !Number.isFinite(matrix.a) ||
+    !Number.isFinite(matrix.b) ||
+    !Number.isFinite(matrix.c) ||
+    !Number.isFinite(matrix.d) ||
+    !Number.isFinite(matrix.tx) ||
+    !Number.isFinite(matrix.ty)
+  ) {
+    return false;
+  }
 
   ctx.save();
   ctx.transform(
-    matrix.a * renderScale,
-    matrix.b * renderScale,
-    matrix.c * renderScale,
+    matrix.a * renderScale * facingSign,
+    matrix.b * renderScale * facingSign,
+    matrix.c * renderScale * facingSign,
     matrix.d * renderScale,
-    originX + matrix.tx * renderScale,
+    originX + matrix.tx * renderScale * facingSign,
     originY + matrix.ty * renderScale,
   );
 
-  const drawX = frame
-    ? (frame.x - (pivot ? pivot.x : 0)) * renderScale
-    : -(pivot ? pivot.x : 0) * renderScale;
-  const drawY = frame
-    ? (frame.y - (pivot ? pivot.y : 0)) * renderScale
-    : -(pivot ? pivot.y : 0) * renderScale;
-  const drawWidth = (frame ? frame.width : source.width) * renderScale;
-  const drawHeight = (frame ? frame.height : source.height) * renderScale;
+  const drawX = useRuntime57Math ? -pivotX : frame ? frame.x - pivotX : -pivotX;
+  const drawY = useRuntime57Math ? -pivotY : frame ? frame.y - pivotY : -pivotY;
+  const drawWidth = useRuntime57Math
+    ? source.width
+    : frame
+      ? frame.width
+      : source.width;
+  const drawHeight = useRuntime57Math
+    ? source.height
+    : frame
+      ? frame.height
+      : source.height;
+  if (
+    !Number.isFinite(drawWidth) ||
+    !Number.isFinite(drawHeight) ||
+    drawWidth <= 0.5 ||
+    drawHeight <= 0.5
+  ) {
+    ctx.restore();
+    return false;
+  }
 
   ctx.drawImage(
     sourceImage,
@@ -649,6 +883,17 @@ function drawKenjiWithDragonBones(
   const isRunning = Math.abs(Number(player?.vx) || 0) > 0.4;
   const isJumping = !player?.onGround;
 
+  const vx = Number(player?.vx) || 0;
+  if (vx > 0.06) state.facing = 1;
+  else if (vx < -0.06) state.facing = -1;
+  else {
+    const lastX = Number.isFinite(state.lastX) ? state.lastX : smoothX;
+    const dx = smoothX - lastX;
+    if (dx > 0.08) state.facing = 1;
+    else if (dx < -0.08) state.facing = -1;
+  }
+  state.lastX = smoothX;
+
   let nextAnimation = "idle";
   if (isJumping) {
     nextAnimation = "jump";
@@ -658,20 +903,21 @@ function drawKenjiWithDragonBones(
 
   playKenjiAnimation(playerId, nextAnimation);
 
-  const shouldFlip = Number(player?.vx) < -0.05;
+  const shouldFlip = state.facing !== KENJI_NATIVE_FACING;
   armature.flipX = shouldFlip;
 
   updateKenjiAnimation(playerId, frameDeltaMs);
 
   try {
-    const renderScale = 0.03;
-    const originX = smoothX - camera.x;
-    const originY = smoothY - camera.y;
+    const renderScale = getKenjiRenderScale(armature);
+    const originX = smoothX - camera.x + 10;
+    const originY = smoothY - camera.y + 16;
     const slots = armature.getSlots ? armature.getSlots() : [];
+    const facingSign = state.facing === KENJI_NATIVE_FACING ? 1 : -1;
     let drawn = 0;
 
     for (let i = 0; i < slots.length; i++) {
-      if (drawKenjiSlot(slots[i], originX, originY, renderScale)) {
+      if (drawKenjiSlot(slots[i], originX, originY, renderScale, facingSign)) {
         drawn++;
       }
     }
@@ -701,6 +947,7 @@ function drawPlayerBody(
       smoothY,
       frameDeltaMs,
     );
+
     if (drawn) return;
   }
 
@@ -708,7 +955,136 @@ function drawPlayerBody(
   ctx.fillRect(smoothX - camera.x, smoothY - camera.y, 20, 20);
 }
 
+// Initialize DragonBones for Kenji
 loadKenjiDragonBones();
+
+function setMapBackdrop(url) {
+  const backdrop = document.getElementById("mapBackdrop");
+  if (!backdrop) return;
+
+  if (url) {
+    backdrop.style.backgroundImage = `url("${url}")`;
+  } else {
+    backdrop.style.backgroundImage = "none";
+  }
+}
+
+function renderHeroSwitchCards() {
+  const heroCategoriesEl = document.getElementById("heroCategories");
+  if (!heroCategoriesEl) return;
+
+  heroCategoriesEl.innerHTML = "";
+  const grouped = buildHeroCategoryMap(availableHeroes);
+
+  for (let i = 0; i < grouped.length; i++) {
+    const bucket = grouped[i];
+    const section = document.createElement("section");
+    section.className = "heroCategory";
+
+    const title = document.createElement("h4");
+    title.textContent = toLabel(bucket.category);
+    section.appendChild(title);
+
+    const row = document.createElement("div");
+    row.className = "heroCards";
+
+    for (let j = 0; j < bucket.heroes.length; j++) {
+      const hero = bucket.heroes[j];
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "heroCard";
+      if (hero === selectedHeroName) button.classList.add("active");
+      button.textContent = toLabel(hero);
+      button.addEventListener("click", () => {
+        selectedHeroName = hero;
+        localStorage.setItem("selectedRole", selectedHeroName);
+        renderHeroSwitchCards();
+      });
+      row.appendChild(button);
+    }
+
+    section.appendChild(row);
+    heroCategoriesEl.appendChild(section);
+  }
+}
+
+function showMapIntro(mapName) {
+  const overlay = document.getElementById("mapIntroOverlay");
+  const label = document.getElementById("mapIntroName");
+  if (!overlay || !label || !mapName) return;
+
+  label.textContent = String(mapName);
+  overlay.classList.remove("hidden", "is-visible");
+  void overlay.offsetWidth;
+  overlay.classList.add("is-visible");
+
+  if (mapIntroTimeoutId) {
+    clearTimeout(mapIntroTimeoutId);
+  }
+
+  mapIntroTimeoutId = setTimeout(() => {
+    overlay.classList.add("hidden");
+    overlay.classList.remove("is-visible");
+    mapIntroTimeoutId = null;
+  }, 3000);
+}
+
+function getMapPlatformStyle(room = currentRoomState) {
+  const mapKey = String(room?.mapKey || "").toLowerCase();
+  if (mapKey === "syberia") {
+    return {
+      default: "#b3d8ff",
+      ice: "#d4eeff",
+      steel: "#97b7d7",
+      core: "#66c7ff",
+      bridge: "#bdd9ea",
+      wall: "#6f90b6",
+    };
+  }
+
+  return {
+    default: "#7ad8b2",
+    ruin: "#95e5bf",
+    altar: "#4edca0",
+    pillar: "#6bc79a",
+    wall: "#4fa985",
+  };
+}
+
+function getMapTheme(room = currentRoomState) {
+  const mapKey = String(room?.mapKey || "").toLowerCase();
+  if (mapKey === "syberia") {
+    return {
+      base: "#d4ecff",
+      glow: "rgba(224, 244, 255, 0.22)",
+      haze: "rgba(136, 186, 223, 0.2)",
+    };
+  }
+
+  return {
+    base: "#f0db95",
+    glow: "rgba(255, 227, 151, 0.24)",
+    haze: "rgba(176, 124, 70, 0.18)",
+  };
+}
+
+function syncMapBackground(room = currentRoomState) {
+  const url = room?.mapBackgroundUrl || null;
+
+  if (!url) {
+    mapBackgroundUrl = null;
+    mapBackgroundImage = null;
+    setMapBackdrop(null);
+    return;
+  }
+
+  if (url === mapBackgroundUrl && mapBackgroundImage) return;
+
+  mapBackgroundUrl = url;
+  mapBackgroundImage = new Image();
+  mapBackgroundImage.src = url;
+  setMapBackdrop(url);
+}
 
 function getCurrentInputPayload() {
   return {
@@ -777,6 +1153,7 @@ function updateSkillHudFromState(playerState) {
   const selfHpFill = document.getElementById("selfHpFill");
   const respawnOverlay = document.getElementById("respawnOverlay");
   const respawnText = document.getElementById("respawnText");
+  const respawnSwitchHint = document.getElementById("respawnSwitchHint");
 
   skillHudState.skill1Cooldown = Number(playerState?.skill1Cooldown) || 0;
   skillHudState.skill2Cooldown = Number(playerState?.skill2Cooldown) || 0;
@@ -866,6 +1243,9 @@ function updateSkillHudFromState(playerState) {
       ? `Reapparition dans ${timerSeconds}s`
       : "";
   }
+  if (respawnSwitchHint) {
+    respawnSwitchHint.classList.toggle("hidden", !isDead);
+  }
 }
 
 function getTeamColor(team, isLocal) {
@@ -910,6 +1290,43 @@ function drawPlayerTag(player, smoothX, smoothY, isLocal) {
 
 function drawEnemyTag(enemy, smoothX, smoothY) {
   drawWorldBar(smoothX, smoothY - 8, 20, enemy.hp, 100, "#ff7f7f");
+}
+
+function drawSpawnZoneBoundaries(room = currentRoomState) {
+  const zones = Array.isArray(room?.teamZones) ? room.teamZones : [];
+  if (zones.length === 0) return;
+
+  for (let i = 0; i < zones.length; i++) {
+    const zone = zones[i];
+    const team = String(zone?.team || "").toLowerCase();
+    const x = Number(zone?.x) || 0;
+    const y = Number(zone?.y) || 0;
+    const w = Math.max(0, Number(zone?.w) || 0);
+    const h = Math.max(0, Number(zone?.h) || 0);
+
+    if (w <= 0 || h <= 0) continue;
+
+    const fillColor =
+      team === "blue"
+        ? "rgba(90, 170, 255, 0.12)"
+        : "rgba(255, 110, 110, 0.12)";
+    const strokeColor =
+      team === "blue"
+        ? "rgba(135, 205, 255, 0.78)"
+        : "rgba(255, 165, 165, 0.78)";
+
+    const drawX = x - camera.x;
+    const drawY = y - camera.y;
+
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(drawX, drawY, w, h);
+
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
+    ctx.strokeRect(drawX, drawY, w, h);
+    ctx.setLineDash([]);
+  }
 }
 
 function getLeaderboardPlayers(players = {}) {
@@ -1114,6 +1531,16 @@ resizeCanvas();
 // INPUT
 // =====================
 document.addEventListener("keydown", (e) => {
+  if (e.key === "h" || e.key === "H") {
+    if (heroSwitchVisible) {
+      setHeroSwitchVisible(false);
+    } else if (canChangeHeroNow()) {
+      setHeroSwitchVisible(true);
+    }
+    e.preventDefault();
+    return;
+  }
+
   if (e.key === "Tab") {
     leaderboardHeld = true;
     if (uiRefs.leaderboardOverlay) {
@@ -1124,6 +1551,11 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (e.key === "Escape") {
+    if (heroSwitchVisible) {
+      setHeroSwitchVisible(false);
+      return;
+    }
+
     setPaused(!isPaused);
     return;
   }
@@ -1196,15 +1628,38 @@ startInputLoop();
 // STATE
 // =====================
 socket.on("state", (state) => {
+  const wasStarted = !!currentRoomState.started;
+  const previousWinner = currentRoomState.winnerTeam;
+
   if (state.room) {
     currentRoomState = {
       ...currentRoomState,
       ...state.room,
       teamCounts: state.room.teamCounts || currentRoomState.teamCounts,
+      teamZones: Array.isArray(state.room.teamZones)
+        ? state.room.teamZones
+        : currentRoomState.teamZones,
     };
     updateRoomOverlay(currentRoomState);
+    syncMapBackground(currentRoomState);
     renderLeaderboard(state.players || {}, currentRoomState);
     updateTopScoreHud(state.players || {}, currentRoomState);
+
+    if (!wasStarted && !!currentRoomState.started) {
+      showMapIntro(currentRoomState.mapName);
+    }
+
+    const hasEndedNow =
+      !!wasStarted &&
+      !currentRoomState.started &&
+      !!currentRoomState.winnerTeam &&
+      currentRoomState.winnerTeam !== previousWinner;
+
+    if (hasEndedNow) {
+      const myTeam = state.players?.[socket.id]?.team || selectedTeam;
+      returnToHeroSelect(myTeam);
+      return;
+    }
   }
 
   serverPlayers = state.players;
@@ -1262,6 +1717,9 @@ socket.on("state", (state) => {
   updateSkillHudFromState(serverPlayers[socket.id]);
 
   const myState = serverPlayers[socket.id];
+  if (heroSwitchVisible && !canChangeHeroNow()) {
+    setHeroSwitchVisible(false);
+  }
   const hpNow = Math.max(0, Number(myState?.hp) || 0);
   if (lastLocalHp !== null && hpNow < lastLocalHp) {
     damageFlash = Math.max(damageFlash, 18);
@@ -1332,6 +1790,65 @@ function getMyPlayer() {
   return serverPlayers[socket.id];
 }
 
+function getSelectedHeroName() {
+  const normalized = String(
+    selectedHeroName || localStorage.getItem("selectedRole") || "",
+  )
+    .trim()
+    .toLowerCase();
+  return availableHeroes.includes(normalized)
+    ? normalized
+    : availableHeroes[0] || LOCAL_HEROES[0];
+}
+
+function canChangeHeroNow() {
+  const me = getMyPlayer();
+  if (!me) return false;
+  return !!currentRoomState.started && !!me.dead;
+}
+
+function requestHeroChange() {
+  if (!canChangeHeroNow()) return;
+
+  const hero = getSelectedHeroName();
+  localStorage.setItem("selectedRole", hero);
+  socket.emit("changeClass", hero);
+}
+
+function setHeroSwitchVisible(visible) {
+  const panel = document.getElementById("ui");
+  if (!panel) return;
+  heroSwitchVisible = !!visible;
+  panel.classList.toggle("hidden", !heroSwitchVisible);
+}
+
+function returnToHeroSelect(teamOverride) {
+  if (isReturningToHeroSelect) return;
+  isReturningToHeroSelect = true;
+
+  const safeTeam =
+    String(teamOverride || selectedTeam).toLowerCase() === "blue"
+      ? "blue"
+      : "red";
+
+  localStorage.setItem("pendingMultiRoom", selectedRoom);
+  localStorage.setItem("pendingMultiTeam", safeTeam);
+  localStorage.setItem("pendingMultiMode", selectedRoomMode);
+  localStorage.setItem("selectedTeam", safeTeam);
+  localStorage.setItem("selectedRoomMode", selectedRoomMode);
+  localStorage.setItem("playerNickname", selectedNickname);
+
+  const query = new URLSearchParams({
+    room: selectedRoom,
+    team: safeTeam,
+    nickname: selectedNickname,
+    roomMode: selectedRoomMode,
+  });
+
+  socket.disconnect();
+  window.location.href = `${FRONTEND_ORIGIN}/multi/hero-select.html?${query.toString()}`;
+}
+
 function syncMouseWithPlayerIfNeeded() {
   const me = getMyPlayer();
   if (!me) return;
@@ -1353,20 +1870,29 @@ function updateCamera(frameDeltaMs) {
 
   if (!cameraInitialized) {
     camera.x = me.x;
+    camera.y = me.y;
     cameraTargetX = me.x;
+    cameraTargetY = me.y;
     cameraInitialized = true;
   }
 
   const left = canvas.width * 0.35;
   const right = canvas.width * 0.65;
+  const top = canvas.height * 0.4;
+  const bottom = canvas.height * 0.6;
 
   const px = me.x - cameraTargetX;
+  const py = me.y - cameraTargetY;
 
   if (px < left) cameraTargetX = me.x - left;
   else if (px > right) cameraTargetX = me.x - right;
 
+  if (py < top) cameraTargetY = me.y - top;
+  else if (py > bottom) cameraTargetY = me.y - bottom;
+
   const cameraAlpha = getLerpAlpha(12, frameDeltaMs);
   camera.x = lerp(camera.x, cameraTargetX, cameraAlpha);
+  camera.y = lerp(camera.y, cameraTargetY, cameraAlpha);
 }
 
 // =====================
@@ -1402,9 +1928,30 @@ function draw(timestamp) {
   const enemyAlpha = getLerpAlpha(16, frameDeltaMs);
   const projectileAlpha = getLerpAlpha(26, frameDeltaMs);
 
+  const theme = getMapTheme(currentRoomState);
+
+  ctx.fillStyle = theme.glow;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (
+    !mapBackgroundImage ||
+    !mapBackgroundImage.complete ||
+    mapBackgroundImage.naturalWidth <= 0
+  ) {
+    const fallbackGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    fallbackGradient.addColorStop(0, theme.haze);
+    fallbackGradient.addColorStop(1, "rgba(0, 0, 0, 0.08)");
+    ctx.fillStyle = fallbackGradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  drawSpawnZoneBoundaries(currentRoomState);
+
   // MAP
-  ctx.fillStyle = "green";
+  const palette = getMapPlatformStyle(currentRoomState);
   for (let p of normalizeMapPayload(serverMap)) {
+    const platformKind = String(p.style || "default").toLowerCase();
+    ctx.fillStyle = palette[platformKind] || palette.default;
     ctx.fillRect(p.x - camera.x, p.y - camera.y, p.w, p.h);
   }
 
@@ -1623,8 +2170,7 @@ requestAnimationFrame(draw);
 // =====================
 // CLASS SWITCH
 // =====================
-window.addEventListener("DOMContentLoaded", () => {
-  const classSelect = document.getElementById("classSelect");
+window.addEventListener("DOMContentLoaded", async () => {
   const applyBtn = document.getElementById("applyClass");
   const optionsGear = document.getElementById("optionsGear");
   const continueBtn = document.getElementById("continueBtn");
@@ -1661,9 +2207,22 @@ window.addEventListener("DOMContentLoaded", () => {
     teamScoreTarget,
   };
 
-  if (!classSelect || !applyBtn) return;
+  if (!applyBtn) return;
 
-  loadHeroesIntoSelect(classSelect, selectedRole);
+  availableHeroes = await loadAvailableHeroes();
+  if (!Array.isArray(availableHeroes) || availableHeroes.length === 0) {
+    availableHeroes = [...LOCAL_HEROES];
+  }
+  selectedHeroName =
+    localStorage.getItem("selectedRole") ||
+    selectedRole ||
+    availableHeroes[0] ||
+    LOCAL_HEROES[0];
+  if (!availableHeroes.includes(selectedHeroName)) {
+    selectedHeroName = availableHeroes[0] || LOCAL_HEROES[0];
+  }
+  renderHeroSwitchCards();
+
   applyVolume();
 
   if (settingsSection) {
@@ -1688,9 +2247,11 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   applyBtn.addEventListener("click", () => {
-    localStorage.setItem("selectedRole", classSelect.value);
-    socket.emit("changeClass", classSelect.value);
+    requestHeroChange();
+    setHeroSwitchVisible(false);
   });
+
+  setHeroSwitchVisible(false);
 
   if (optionsGear) {
     optionsGear.addEventListener("click", () => {
@@ -1767,7 +2328,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (backMenuBtn) {
     backMenuBtn.addEventListener("click", () => {
-      window.location.href = `${FRONTEND_ORIGIN}/`;
+      window.location.href = `${FRONTEND_ORIGIN}/multi/`;
     });
   }
 
@@ -1779,7 +2340,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (leaveRoomBtn) {
     leaveRoomBtn.addEventListener("click", () => {
-      window.location.href = `${FRONTEND_ORIGIN}/`;
+      window.location.href = `${FRONTEND_ORIGIN}/multi/`;
     });
   }
 });

@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UltraDash Hero Select</title>
+    <link rel="stylesheet" href="css/menu.css" />
+  </head>
+  <body>
+    <main id="menu" class="lobbyMenu heroSelectLayout">
+      <h1>Selection Hero</h1>
+      <p class="subtitle" id="heroRoomLabel">Room: -</p>
+      <p class="subtitle" id="heroTeamLabel">Equipe: -</p>
+
+      <div id="heroCategories" class="heroCategories"></div>
+
+      <div class="heroActions">
+        <button id="confirmHeroBtn" type="button">Valider Hero</button>
+        <button id="startGameBtn" type="button" class="hidden">
+          Lancer la partie
+        </button>
+        <button id="backTeamBtn" type="button">Changer equipe</button>
+      </div>
+
+      <p id="statusLine" class="statusLine" aria-live="polite"></p>
+    </main>
+
+    <script src="http://localhost:3000/socket.io/socket.io.js"></script>
+    <script src="src/lobby-common.js"></script>
+    <script src="src/hero-select.js"></script>
+  </body>
+</html>

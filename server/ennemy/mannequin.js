@@ -21,6 +21,8 @@ class Mannequin {
 
     this.onGround = false;
 
+    this.hp = 100;
+
     this.alive = true;
   }
 
@@ -49,6 +51,7 @@ class Mannequin {
       y: this.y,
       vx: this.vx,
       vy: this.vy,
+      hp: this.hp,
       alive: this.alive,
     };
   }

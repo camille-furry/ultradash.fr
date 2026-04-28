@@ -6,6 +6,7 @@
   </head>
 
   <body>
+    <div id="mapBackdrop" aria-hidden="true"></div>
     <canvas id="game"></canvas>
 
     <div id="topScoreHud">
@@ -21,6 +22,13 @@
     </div>
 
     <button id="optionsGear" aria-label="Options" title="Options">⚙</button>
+
+    <div id="mapIntroOverlay" class="hidden" aria-live="polite">
+      <div id="mapIntroCard">
+        <small>Arena</small>
+        <strong id="mapIntroName">Map</strong>
+      </div>
+    </div>
 
     <div id="pauseOverlay" class="hidden">
       <div id="pausePanel">
@@ -89,15 +97,23 @@
       <div id="respawnPanel">
         <h2>Tu es elimine</h2>
         <p id="respawnText">Reapparition dans 10s</p>
+        <p id="respawnSwitchHint" class="hidden">
+          Appuie sur H pour ouvrir la selection de hero
+        </p>
       </div>
     </div>
 
-    <div id="ui">
-      <select id="classSelect">
-        <option value="">Chargement...</option>
-      </select>
+    <div id="ui" class="hidden">
+      <h3 id="heroSwitchTitle">Selection Hero</h3>
+      <p id="heroSwitchHint" class="subtitle">
+        Disponible uniquement quand tu es KO. Touche H pour ouvrir/fermer.
+      </p>
 
-      <button id="applyClass">Changer</button>
+      <div id="heroCategories" class="heroCategories"></div>
+
+      <div class="heroActions heroSwitchActions">
+        <button id="applyClass" type="button">Valider Hero</button>
+      </div>
     </div>
 
     <div id="skillsHud">
@@ -108,17 +124,6 @@
         </div>
         <div class="skillHudBar">
           <div class="skillHudFill" id="ammoFill"></div>
-        </div>
-      </div>
-
-      <div class="skillHudItem" id="selfHpHud">
-        <div class="skillHudTop">
-          <span>HP</span>
-          <strong>Vie</strong>
-          <small id="selfHpText">100 / 100</small>
-        </div>
-        <div class="skillHudBar">
-          <div class="skillHudFill" id="selfHpFill"></div>
         </div>
       </div>
 
@@ -145,13 +150,53 @@
       </div>
     </div>
 
+    <div class="skillHudItem" id="selfHpHud">
+      <div class="skillHudTop">
+        <span>HP</span>
+        <strong>Vie</strong>
+        <small id="selfHpText">100 / 100</small>
+      </div>
+      <div class="skillHudBar">
+        <div class="skillHudFill" id="selfHpFill"></div>
+      </div>
+    </div>
+
+    <script>
+      window.__dragonbonesReady = (async () => {
+        try {
+          const mod = await import("/vendor/dragonbones-runtime-5.7.js");
+          const runtime = mod?.dragonBones || mod;
+
+          if (runtime && typeof runtime.BaseFactory === "function") {
+            window.dragonBones = runtime;
+            return true;
+          }
+
+          console.warn("DragonBones ESM loaded but runtime shape is invalid.");
+          return false;
+        } catch (error) {
+          console.warn("DragonBones ESM import failed:", error);
+          return false;
+        }
+      })();
+    </script>
+
     <!-- Socket.IO -->
     <script src="http://localhost:3000/socket.io/socket.io.js"></script>
 
-    <!-- DragonBones -->
-    <script src="https://cdn.jsdelivr.net/npm/dragonbones@5.7.0/out/dragonbones.js"></script>
-
     <!-- Client -->
-    <script src="src/clientDev.js"></script>
+    <script>
+      (async function () {
+        try {
+          if (window.__dragonbonesReady) {
+            await window.__dragonbonesReady;
+          }
+        } finally {
+          const script = document.createElement("script");
+          script.src = "src/clientMulti.js?v=20260406n";
+          document.body.appendChild(script);
+        }
+      })();
+    </script>
   </body>
 </html>

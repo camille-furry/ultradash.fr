@@ -17,7 +17,7 @@ class Dasher extends Hero {
     this.jumpsLeft = 1;
   }
 
-  update() {
+  update(context = {}) {
     // =====================
     // COOLDOWNS
     // =====================
@@ -48,7 +48,7 @@ class Dasher extends Hero {
       this.overrideVY = 0;
     }
 
-    super.update();
+    super.update(context);
   }
 }
 

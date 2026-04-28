@@ -7,6 +7,7 @@ function resolvePlatformCollision(p, platforms) {
 
   p.onWall = false;
   p.wallSide = null;
+  p.justLanded = false;
 
   for (let plat of platforms) {
     const overlapX = p.x < plat.x + plat.w && p.x + w > plat.x;
@@ -31,6 +32,7 @@ function resolvePlatformCollision(p, platforms) {
       p.y = platTop - h;
       p.vy = 0;
       p.onGround = true;
+      p.justLanded = true;
       continue;
     }
 

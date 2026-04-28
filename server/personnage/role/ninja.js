@@ -15,7 +15,7 @@ class Ninja extends Hero {
     this.wasOnWall = false;
   }
 
-  update() {
+  update(context = {}) {
     if (this.onWall) {
       this.lastWallSide = this.wallSide;
       this.wasOnWall = true;
@@ -42,7 +42,7 @@ class Ninja extends Hero {
       this.jumpCooldown = 5;
     }
 
-    super.update();
+    super.update(context);
 
     if (this.wallJumpLock > 0) this.wallJumpLock--;
     if (this.wallStickTime > 0) this.wallStickTime--;

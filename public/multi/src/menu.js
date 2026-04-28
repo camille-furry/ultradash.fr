@@ -10,7 +10,7 @@ async function loadRoomModes(modeSelect) {
   let modes = [{ key: DEFAULT_MODE, label: "3v3" }];
 
   try {
-    const response = await fetch(`${SERVER_ORIGIN}/api/dev/room-modes`);
+    const response = await fetch(`${SERVER_ORIGIN}/api/multi/room-modes`);
     if (response.ok) {
       const payload = await response.json();
       if (Array.isArray(payload.modes) && payload.modes.length > 0) {
@@ -32,7 +32,7 @@ async function loadRoomModes(modeSelect) {
     modeSelect.appendChild(option);
   }
 
-  const savedMode = localStorage.getItem("pendingDevMode") || DEFAULT_MODE;
+  const savedMode = localStorage.getItem("pendingMultiMode") || DEFAULT_MODE;
   if (modes.some((mode) => mode.key === savedMode)) {
     modeSelect.value = savedMode;
   }
@@ -47,7 +47,7 @@ async function loadRooms(elements) {
   emptyMessage.textContent = "Chargement des rooms...";
 
   try {
-    const response = await fetch(`${SERVER_ORIGIN}/api/dev/rooms`);
+    const response = await fetch(`${SERVER_ORIGIN}/api/multi/rooms`);
     if (!response.ok) {
       throw new Error("Unable to load rooms");
     }
@@ -103,15 +103,15 @@ async function loadRooms(elements) {
 }
 
 function goToTeamPage(room, mode) {
-  localStorage.setItem("pendingDevRoom", room);
-  localStorage.setItem("pendingDevMode", mode || "team3v3");
+  localStorage.setItem("pendingMultiRoom", room);
+  localStorage.setItem("pendingMultiMode", mode || "team3v3");
 
   const params = new URLSearchParams({
     room,
     roomMode: mode || "team3v3",
   });
 
-  window.location.href = `${FRONTEND_ORIGIN}/dev/team.html?${params.toString()}`;
+  window.location.href = `${FRONTEND_ORIGIN}/multi/team.html?${params.toString()}`;
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -162,13 +162,13 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     const selectedMode =
       elements.roomModeSelect?.value ||
-      localStorage.getItem("pendingDevMode") ||
+      localStorage.getItem("pendingMultiMode") ||
       DEFAULT_MODE;
 
     elements.statusLine.textContent = "Creation de la room...";
 
     try {
-      const response = await fetch(`${SERVER_ORIGIN}/api/dev/rooms`, {
+      const response = await fetch(`${SERVER_ORIGIN}/api/multi/rooms`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -182,7 +182,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      localStorage.setItem("pendingDevMode", selectedMode);
+      localStorage.setItem("pendingMultiMode", selectedMode);
       goToTeamPage(roomCandidate, selectedMode);
     } catch (error) {
       elements.statusLine.textContent = "Erreur reseau pendant la creation.";

@@ -20,6 +20,8 @@ class Enemy {
 
     this.onGround = false;
 
+    this.hp = 100;
+
     this.alive = true;
   }
 
